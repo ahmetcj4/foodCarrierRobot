@@ -46,10 +46,10 @@ public class WhereAmI {
 		while (Button.readButtons() != Button.ID_ESCAPE) {
 			drawString(
 					"Press",
-					"UP    for Mapping",
-					"DOWN  for Execution", 
-					"ENTER for Idle", 
-					"ESC   for Reset");
+					"UP    for Mapping   ",
+					"DOWN  for Execution ", 
+					"ENTER for Idle      ", 
+					"ESC   for Reset     ");
 			Button.waitForAnyPress();
 			switch (Button.readButtons()) {
 			case Button.ID_UP:
@@ -119,7 +119,7 @@ public class WhereAmI {
 		while(true){
 			distances = getDistancesfromWalls(direction);
 //			put values of walls and "not walls" to the 19*19 grid. and update boundaries
-
+//updatethem if sensor is not capable of measuring long dıstances
 			for (int i = 1; i < distances[0]; i+=2) {
 				int j = position.x + i;
 				if (i==distances[0]) {
@@ -184,8 +184,10 @@ public class WhereAmI {
 			updateMap19(position.x,position.y,getCurrentCellColor());
 			//movement part will come here
 			
-			
-			
+			//check neıghbor cells. get first unknown neighbor cell that there is no wall in between
+			//if there is no cell or the current cell is black, backtrack until there reach branchPoint.
+			//if there are more than 1 neıghbor cells make thıs cell branchPoint
+			//not completed
 			
 			
 			if(checkIdleButton()) return;	
