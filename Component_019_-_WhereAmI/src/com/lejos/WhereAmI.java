@@ -210,6 +210,11 @@ public class WhereAmI {
 				pilot.rotate(-90);
 				position = forward(position,direction);
 			}else{ //go back
+				if (previous.size()==0) {//TODO trivial solution for the case where there are some reachable cells,should be improved vastly.
+					saveMap(boundaries);
+					congratulate();
+					return;
+				}
 				backward = previous.pop();
 		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
 		    	pilot.rotate(90*(newDirection-direction));
