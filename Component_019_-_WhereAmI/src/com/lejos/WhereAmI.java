@@ -1,6 +1,7 @@
 package com.lejos;
 
 import java.awt.Point;
+import java.util.Stack;
 
 import lejos.hardware.BrickFinder;
 import lejos.hardware.Button;
@@ -34,6 +35,7 @@ public class WhereAmI {
 	private static final int wall=1, notWall=2, white=3, blue=4, red=5, black=6;
 	private static int [][] map11;//not used yet
 	private static int [][] map19;
+	private static Stack<Point> previous;
 	private static int foundCells=36;
 	private static int  ccw = -1;
     
@@ -101,7 +103,6 @@ public class WhereAmI {
         pilot.stop();		
 	}
 
-   
     private static void mapping() {
     	drawString("Mapping ", "is started");
     	map19 = new int[19][19];
@@ -110,16 +111,17 @@ public class WhereAmI {
 				map19[i][j] = wall;
         	}
     	}
+    	previous = new Stack<Point>();
     	int center = 9;
     	int [] boundaries = {center, center, center, center};//set initial boundaries
-		Point position = new Point(center, center);//set initial position of the robot
-		int direction = right;//set initial direction of the robot
+		Point position = new Point(center, center),backward;//set initial position of the robot
+		int direction = right,newDirection;//set initial direction of the robot
 		
 		int [] distances = new int[4];//distances from the right, up, left, down walls
 		while(true){
 			distances = getDistancesfromWalls(direction);
 //			put values of walls and "not walls" to the 19*19 grid. and update boundaries
-//updatethem if sensor is not capable of measuring long dıstances
+//updatethem if sensor is not capable of measuring long distances
 			for (int i = 1; i < distances[0]; i+=2) {
 				int j = position.x + i;
 				if (i==distances[0]) {
@@ -184,17 +186,70 @@ public class WhereAmI {
 			updateMap19(position.x,position.y,getCurrentCellColor());
 			//movement part will come here
 			
-			//check neıghbor cells. get first unknown neighbor cell that there is no wall in between
+			//check neighbor cells. get first unknown neighbor cell that there is no wall in between
 			//if there is no cell or the current cell is black, backtrack until there reach branchPoint.
-			//if there are more than 1 neıghbor cells make thıs cell branchPoint
+			//if there are more than 1 neighbor cells make this cell branchPoint
 			//not completed
-			
+			if (getCurrentCellColor()==black) {
+				backward = previous.pop();
+		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
+		    	pilot.rotate(90*(newDirection-direction));
+		    	pilot.travel(33);
+		    	position = backward;
+			}else if(distances[direction]>1&&getAdjacentCell(position,direction)==0){//go straight if possible and not visited
+				position = forward(position,direction);
+			}else if(distances[(direction+1)%4]>1&&getAdjacentCell(position,(direction+1)%4)==0){//go to left cell if possible and not visited
+				direction = (direction+1)%4;
+				pilot.rotate(90);
+				position = forward(position,direction);
+			}else if(distances[(direction-1)%4]>1&&getAdjacentCell(position,(direction-1)%4)==0){//go to right cell if possible and not visited
+				direction = (direction-1)%4;
+				pilot.rotate(-90);
+				position = forward(position,direction);
+			}else{ //go back
+				backward = previous.pop();
+		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
+		    	pilot.rotate(90*(newDirection-direction));
+		    	pilot.travel(33);
+		    	position = backward;
+			}
 			
 			if(checkIdleButton()) return;	
 		}
 	}
-    
-    private static void execution() {
+ 
+    /**
+     * goes 1 cell forward and increment and return position with given direction 
+     * pushes current position to stack for backtracking
+     * @param position
+     * @param direction
+     * @return
+     */
+	private static Point forward(Point position, int direction) {
+    	pilot.travel(33);
+		previous.push(new Point(position));
+		if 		(direction==right)	position.x = position.x+2;
+		else if (direction==up)		position.y = position.y-2;
+		else if (direction==left) 	position.x = position.x-2;
+		else if (direction==down) 	position.y = position.y+2;
+		return position;
+	}
+
+	/**
+     * returns value of cell adjacent to given position in given direction
+     * @param position
+     * @param direction
+     * @return
+     */
+    private static int getAdjacentCell(Point position, int direction) {
+		if 		(direction==right&&position.x+2<19) return map19[position.x+2][position.y];
+		else if (direction==up&&position.y-2>0)		return map19[position.x][position.y-2];
+		else if (direction==left&&position.x-2>0) 	return map19[position.x-2][position.y];
+		else if (direction==down&&position.y+2<19) 	return map19[position.x][position.y+2];
+		else return -1;
+	}
+
+	private static void execution() {
 		// TODO execution task
 		
 	}
