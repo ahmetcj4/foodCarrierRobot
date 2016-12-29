@@ -1,10 +1,15 @@
 package com.lejos;
 
 import java.awt.Point;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+import java.util.Scanner;
 import java.util.Stack;
 
 import lejos.hardware.BrickFinder;
 import lejos.hardware.Button;
+import lejos.hardware.Sound;
 import lejos.hardware.ev3.EV3;
 import lejos.hardware.lcd.GraphicsLCD;
 import lejos.hardware.motor.EV3LargeRegulatedMotor;
@@ -32,17 +37,16 @@ public class WhereAmI {
    
     //for mapping and searching
 	private static final int right=0,up=1, left=2, down=3;
-	private static final int wall=1, notWall=2, white=3, blue=4, red=5, black=6;
-	private static int [][] map11;//not used yet
-	private static int [][] map19;
+	private static final int wall=1, notWall=2, white=3, blue=4, red=5, black=6;//0 is default value, used for visited cells
+	private static int [][] map11;//used in task execution
+	private static int [][] map19;//used in mapping
 	private static Stack<Point> previous;
-	private static int foundCells=36;
+	private static int foundCells = 36;//6*6=36 cross section cells of walls and notWalls
 	private static int  ccw = -1;
     
     
     public static void main(String[] args) throws Exception {        
-    	initializeRobot("5.4","11.5"); 
-    	map11 = new int[11][11];
+    	initializeRobot("5.4","11.5"); //TODO change them
 		drawString("Food Carrying", "Robot", "Please", "push button");
 		Button.waitForAnyPress();
 		while (Button.readButtons() != Button.ID_ESCAPE) {
@@ -73,7 +77,7 @@ public class WhereAmI {
     	anchor = GraphicsLCD.HCENTER;
     	
     	PilotProps pilotProps = new PilotProps();
-        pilotProps.setProperty(PilotProps.KEY_WHEELDIAMETER, diameter);//TODO change them
+        pilotProps.setProperty(PilotProps.KEY_WHEELDIAMETER, diameter);
         pilotProps.setProperty(PilotProps.KEY_TRACKWIDTH, tWidth);
         pilotProps.setProperty(PilotProps.KEY_LEFTMOTOR, "A");
         pilotProps.setProperty(PilotProps.KEY_RIGHTMOTOR, "D");
@@ -108,20 +112,20 @@ public class WhereAmI {
     	map19 = new int[19][19];
     	for(int i = 0; i < 19; i+=2){
     		for(int j = 0; j < 19; j+=2){
-				map19[i][j] = wall;
-        	}
-    	}
+				map19[i][j] = wall;	//cross section of walls or notWalls are always considered as wall 
+    		}						//otherwise it would cause issues on finding nearest path 
+    	}							//i.e. best path found passes through walls 
+    
     	previous = new Stack<Point>();
     	int center = 9;
-    	int [] boundaries = {center, center, center, center};//set initial boundaries
+    	int [] boundaries = {center, center, center, center};//set initial boundaries(right, up,left,down)
 		Point position = new Point(center, center),backward;//set initial position of the robot
 		int direction = right,newDirection;//set initial direction of the robot
-		
 		int [] distances = new int[4];//distances from the right, up, left, down walls
 		while(true){
 			distances = getDistancesfromWalls(direction);
-//			put values of walls and "not walls" to the 19*19 grid. and update boundaries
-//updatethem if sensor is not capable of measuring long distances
+			//put values of walls and "not walls" to the 19*19 grid. and update boundaries
+			//TODO update them if sensor is not capable of measuring long distances
 			for (int i = 1; i < distances[0]; i+=2) {
 				int j = position.x + i;
 				if (i==distances[0]) {
@@ -184,18 +188,17 @@ public class WhereAmI {
 			}
 			
 			updateMap19(position.x,position.y,getCurrentCellColor());
-			//movement part will come here
 			
-			//check neighbor cells. get first unknown neighbor cell that there is no wall in between
-			//if there is no cell or the current cell is black, backtrack until there reach branchPoint.
-			//if there are more than 1 neighbor cells make this cell branchPoint
-			//not completed
-			if (getCurrentCellColor()==black) {
-				backward = previous.pop();
-		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
-		    	pilot.rotate(90*(newDirection-direction));
-		    	pilot.travel(33);
-		    	position = backward;
+			if (foundCells==121) {//mapping is complete
+				saveMap(boundaries);
+				congratulate();
+				return;
+			}
+			
+			//movement part
+			if (getCurrentCellColor()==black) {//if current cell is black, go back
+		    	pilot.travel(-33);
+		    	position = previous.pop();
 			}else if(distances[direction]>1&&getAdjacentCell(position,direction)==0){//go straight if possible and not visited
 				position = forward(position,direction);
 			}else if(distances[(direction+1)%4]>1&&getAdjacentCell(position,(direction+1)%4)==0){//go to left cell if possible and not visited
@@ -210,6 +213,7 @@ public class WhereAmI {
 				backward = previous.pop();
 		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
 		    	pilot.rotate(90*(newDirection-direction));
+		    	direction = newDirection;
 		    	pilot.travel(33);
 		    	position = backward;
 			}
@@ -218,7 +222,41 @@ public class WhereAmI {
 		}
 	}
  
+    private static void congratulate() {
+		// TODO congragulate better
+		try {
+			Sound.playTone(440, 100, 10);
+			Thread.sleep(100);
+			Sound.playTone(440, 100, 10);
+			Thread.sleep(100);
+			Sound.playTone(440, 100, 10);
+			Thread.sleep(100);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		
+	}
+    
     /**
+     * saves 19*19 map to 11*11 map with the help of boundaries(right, up,left,down)
+     * @param boundaries
+     */
+	private static void saveMap(int[] boundaries) {
+		try {
+			PrintWriter pw = new PrintWriter("map.txt");
+			for(int i= boundaries[2];i<=boundaries[0];i++){
+				for(int j= boundaries[1];j<=boundaries[3];j++){
+					pw.write(map19[boundaries[2]+i][boundaries[1]+j]+" ");
+				}
+				pw.write("\n");
+			}
+			pw.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
      * goes 1 cell forward and increment and return position with given direction 
      * pushes current position to stack for backtracking
      * @param position
@@ -251,10 +289,28 @@ public class WhereAmI {
 
 	private static void execution() {
 		// TODO execution task
-		
+    	loadMap();
+    	
+
 	}
 
-    /**
+    private static void loadMap() {
+    	Scanner scanner;
+		try {
+			scanner = new Scanner(new File("map.txt"));
+			for(int i= 0;i<11;i++){
+				for(int j= 0;j<11;j++){
+					if(scanner.hasNextInt()){
+				    	   map11[i][j]= scanner.nextInt();
+				    }
+				}
+			}
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}    	
+	}
+
+	/**
      * used for reset to idle state
      * @return
      */
