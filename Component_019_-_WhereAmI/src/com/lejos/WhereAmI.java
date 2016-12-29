@@ -221,7 +221,12 @@ public class WhereAmI {
 			if(checkIdleButton()) return;	
 		}
 	}
- 
+	
+    private static void execution() {
+		// TODO execution task
+    	loadMap();
+	}
+
     private static void congratulate() {
 		// TODO congragulate better
 		try {
@@ -255,6 +260,25 @@ public class WhereAmI {
 			e.printStackTrace();
 		}
 	}
+	
+	/**
+	 * loads 11*11 map to map11 array
+	 */
+	private static void loadMap() {
+	    	Scanner scanner;
+			try {
+				scanner = new Scanner(new File("map.txt"));
+				for(int i= 0;i<11;i++){
+					for(int j= 0;j<11;j++){
+						if(scanner.hasNextInt()){
+					    	   map11[i][j]= scanner.nextInt();
+					    }
+					}
+				}
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+			}    	
+		}
 
 	/**
      * goes 1 cell forward and increment and return position with given direction 
@@ -287,29 +311,6 @@ public class WhereAmI {
 		else return -1;
 	}
 
-	private static void execution() {
-		// TODO execution task
-    	loadMap();
-    	
-
-	}
-
-    private static void loadMap() {
-    	Scanner scanner;
-		try {
-			scanner = new Scanner(new File("map.txt"));
-			for(int i= 0;i<11;i++){
-				for(int j= 0;j<11;j++){
-					if(scanner.hasNextInt()){
-				    	   map11[i][j]= scanner.nextInt();
-				    }
-				}
-			}
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		}    	
-	}
-
 	/**
      * used for reset to idle state
      * @return
@@ -327,13 +328,13 @@ public class WhereAmI {
 		// TODO measure cell color and return accordingly
 		return white;
 	}
-
+	
+	static int []distances = new int[4];
+	static int dir;
 	/**
      * eg {1,1,1,9}
      * @return distances of first walls from  right, up, left, down
    */
-	static int []distances = new int[4];
-	static int dir;
 	private static int[] getDistancesfromWalls(int robotDirection) {
 		for(int i = 0;i<4;i++){
 			int angle = (int)rotatorMotor.getPosition();
@@ -347,9 +348,11 @@ public class WhereAmI {
 		return distances;
 	}
 
-	
     static float [] samples = new float[1];
-	private static float getUltrasonicSensorValue() {
+	/** 
+	 * @return sensed distance in meters
+	 */
+    private static float getUltrasonicSensorValue() {
         SampleProvider sampleProvider = ultrasonicSensor.getDistanceMode();
         if(sampleProvider.sampleSize() > 0) {
             sampleProvider.fetchSample(samples, 0);
