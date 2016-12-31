@@ -15,7 +15,10 @@ import lejos.hardware.lcd.GraphicsLCD;
 import lejos.hardware.motor.EV3LargeRegulatedMotor;
 import lejos.hardware.port.MotorPort;
 import lejos.hardware.port.SensorPort;
+import lejos.hardware.sensor.EV3ColorSensor;
 import lejos.hardware.sensor.EV3UltrasonicSensor;
+import lejos.robotics.Color;
+import lejos.robotics.ColorAdapter;
 import lejos.robotics.SampleProvider;
 import lejos.robotics.chassis.Chassis;
 import lejos.robotics.chassis.Wheel;
@@ -32,7 +35,10 @@ public class WhereAmI {
     private static int anchor;
     
     private static EV3UltrasonicSensor ultrasonicSensor;
-    private static EV3LargeRegulatedMotor leftMotor, rightMotor, rotatorMotor;
+    private static SampleProvider sampleProvider;
+    private static EV3ColorSensor colorSensor;
+    private static ColorAdapter colorAdapter;
+    private static EV3LargeRegulatedMotor leftMotor, rightMotor, rotatorMotor,grabMotor;
     private static MovePilot pilot;
    
     //for mapping and searching
@@ -41,8 +47,10 @@ public class WhereAmI {
 	private static int [][] map11;//used in task execution
 	private static int [][] map19;//used in mapping
 	private static Stack<Point> previous;
+	
 	private static int foundCells = 36;//6*6=36 cross section cells of walls and notWalls
 	private static int  ccw = -1;
+	private static boolean isGrabbed = false;
     
     
     public static void main(String[] args) throws Exception {        
@@ -64,12 +72,24 @@ public class WhereAmI {
 			case Button.ID_DOWN:
 				execution();
 				break;
+			case Button.ID_ENTER:
+				grab(true);
+				break;
+			case Button.ID_LEFT:
+				grab(false);
+				break;
 			case Button.ID_RIGHT:
+				while(Button.readButtons() != Button.ID_ESCAPE){	
+					drawString("color is " + getCurrentCellColor());
+				}
+//				while(Button.readButtons() != Button.ID_ESCAPE){
+//					getUltrasonicSensorValue();
+//				}
 				break;
 			}
 		}
     }
- 
+
 	private static void initializeRobot(String diameter, String tWidth) throws Exception {
     	ev3 = (EV3) BrickFinder.getDefault();
     	graphicsLCD = ev3.getGraphicsLCD();
@@ -87,12 +107,19 @@ public class WhereAmI {
         
         leftMotor = new EV3LargeRegulatedMotor(MotorPort.A);
         rightMotor = new EV3LargeRegulatedMotor(MotorPort.D);
-        rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
+     //   rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
+        grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
+    
         ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
-        
+        sampleProvider = ultrasonicSensor.getDistanceMode();
+
+        colorSensor = new EV3ColorSensor(SensorPort.S2);
+        colorAdapter = new ColorAdapter(colorSensor);
+       
         leftMotor.resetTachoCount();
         rightMotor.resetTachoCount();
-        rotatorMotor.resetTachoCount();
+     //   rotatorMotor.resetTachoCount();
+        grabMotor.resetTachoCount();
         
         float wheelDiameter = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_WHEELDIAMETER, diameter)),
                 trackWidth = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_TRACKWIDTH, tWidth));
@@ -122,7 +149,7 @@ public class WhereAmI {
 		Point position = new Point(center, center),backward;//set initial position of the robot
 		int direction = right,newDirection;//set initial direction of the robot
 		int [] distances = new int[4];//distances from the right, up, left, down walls
-		while(true){
+		for (int iteraiton = 0; iteraiton < 2*25*25; iteraiton++) {
 			distances = getDistancesfromWalls(direction);
 			//put values of walls and "not walls" to the 19*19 grid. and update boundaries
 			//TODO update them if sensor is not capable of measuring long distances
@@ -230,6 +257,7 @@ public class WhereAmI {
     private static void execution() {
 		// TODO execution task
     	loadMap();
+    	//lookaround and current cell color
 	}
 
     private static void congratulate() {
@@ -285,6 +313,16 @@ public class WhereAmI {
 			}    	
 		}
 
+    /**
+     * grabs the food by rotating down the grab mechanism grab == true
+     * @param grab
+     */
+	private static void grab(boolean grab) {
+		if (grab==isGrabbed) return;	
+		int dir = grab?-1:1;
+		grabMotor.rotate(dir*430,true);
+		isGrabbed = grab;
+	}
 	/**
      * goes 1 cell forward and increment and return position with given direction 
      * pushes current position to stack for backtracking
@@ -329,11 +367,20 @@ public class WhereAmI {
     	map19[i][j] = cell;
 	}
 
+	/**
+	 * @return returns colorId of given cell
+	 */
 	private static int getCurrentCellColor() {
-		// TODO measure cell color and return accordingly
-		return white;
+		switch (colorAdapter.getColorID()) {
+		case Color.WHITE: return white;
+		case Color.BLACK: return black;
+		case Color.RED: return red;
+		case Color.BLUE: return blue;
+		default: return 0;
+		}
+
 	}
-	
+
 	static int []distances = new int[4];
 	static int dir;
 	/**
@@ -358,7 +405,6 @@ public class WhereAmI {
 	 * @return sensed distance in meters
 	 */
     private static float getUltrasonicSensorValue() {
-        SampleProvider sampleProvider = ultrasonicSensor.getDistanceMode();
         if(sampleProvider.sampleSize() > 0) {
             sampleProvider.fetchSample(samples, 0);
             return samples[0];
