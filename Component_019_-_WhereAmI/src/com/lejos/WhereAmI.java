@@ -54,7 +54,7 @@ public class WhereAmI {
     
     
     public static void main(String[] args) throws Exception {        
-    	initializeRobot("5.4","11.5"); //TODO change them
+    	initializeRobot(30,"5.5","14.3",0); 
 		drawString("Food Carrying", "Robot", "Please", "push button");
 		Button.waitForAnyPress();
 		while (Button.readButtons() != Button.ID_ESCAPE) {
@@ -73,10 +73,12 @@ public class WhereAmI {
 				execution();
 				break;
 			case Button.ID_ENTER:
-				grab(true);
+					pilot.rotate(ccw*360);
+					ccw=-ccw;
 				break;
 			case Button.ID_LEFT:
-				grab(false);
+				pilot.travel(ccw*-150);
+				ccw=-ccw;
 				break;
 			case Button.ID_RIGHT:
 				while(Button.readButtons() != Button.ID_ESCAPE){	
@@ -90,7 +92,7 @@ public class WhereAmI {
 		}
     }
 
-	private static void initializeRobot(String diameter, String tWidth) throws Exception {
+	private static void initializeRobot(int speed,String diameter, String tWidth, double errorRate) throws Exception {
     	ev3 = (EV3) BrickFinder.getDefault();
     	graphicsLCD = ev3.getGraphicsLCD();
     	width = graphicsLCD.getWidth()/2;
@@ -125,12 +127,14 @@ public class WhereAmI {
                 trackWidth = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_TRACKWIDTH, tWidth));
         boolean reverse = Boolean.parseBoolean(pilotProps.getProperty(PilotProps.KEY_REVERSE, "false"));
         
-        Chassis chassis = new WheeledChassis(new Wheel[]{WheeledChassis.modelWheel(leftMotor,wheelDiameter).offset(-trackWidth/2).invert(reverse),
-        		WheeledChassis.modelWheel(rightMotor,wheelDiameter).offset(trackWidth/2).invert(reverse)}, WheeledChassis.TYPE_DIFFERENTIAL);
+        Chassis chassis = new WheeledChassis(new Wheel[]{WheeledChassis.modelWheel(leftMotor,wheelDiameter-errorRate).offset(-trackWidth/2).invert(reverse),
+        		WheeledChassis.modelWheel(rightMotor,wheelDiameter+errorRate).offset(trackWidth/2).invert(reverse)}, WheeledChassis.TYPE_DIFFERENTIAL);
         
         pilot = new MovePilot(chassis);
-        pilot.setLinearSpeed(10);
-        pilot.setAngularSpeed(10);
+        pilot.setAngularAcceleration(4*5*speed);
+        pilot.setLinearAcceleration(4*speed);
+        pilot.setLinearSpeed(speed);
+        pilot.setAngularSpeed(5*speed);
         pilot.stop();		
 	}
 
