@@ -136,6 +136,7 @@ public class WhereAmI {
 
     private static void mapping() {
     	drawString("Mapping ", "is started");
+    	grab(true);
     	map19 = new int[19][19];
     	for(int i = 0; i < 19; i+=2){
     		for(int j = 0; j < 19; j+=2){
@@ -219,7 +220,7 @@ public class WhereAmI {
 			if (foundCells==121) {//mapping is complete
 				saveMap(boundaries);
 				congratulate();
-				return;
+				break;
 			}
 			
 			//movement part
@@ -240,7 +241,7 @@ public class WhereAmI {
 				if (previous.size()==0) {//TODO trivial solution for the case where there are some reachable cells,should be improved vastly.
 					saveMap(boundaries);
 					congratulate();
-					return;
+					break;
 				}
 				backward = previous.pop();
 		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
@@ -250,8 +251,9 @@ public class WhereAmI {
 		    	position = backward;
 			}
 			
-			if(checkIdleButton()) return;	
+			if(checkIdleButton()) break;	
 		}
+		grab(false);
 	}
 	
     private static void execution() {
@@ -320,7 +322,7 @@ public class WhereAmI {
 	private static void grab(boolean grab) {
 		if (grab==isGrabbed) return;	
 		int dir = grab?-1:1;
-		grabMotor.rotate(dir*430,true);
+		grabMotor.rotate(dir*430);
 		isGrabbed = grab;
 	}
 	/**
