@@ -1,9 +1,14 @@
 package com.lejos;
 
 import java.awt.Point;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.Scanner;
 import java.util.Stack;
 
@@ -24,46 +29,53 @@ import lejos.robotics.chassis.Chassis;
 import lejos.robotics.chassis.Wheel;
 import lejos.robotics.chassis.WheeledChassis;
 import lejos.robotics.navigation.MovePilot;
-import lejos.utility.Delay;
 import lejos.utility.PilotProps;
 
 public class WhereAmI {
-    private static EV3 ev3;
-    //for drawing on the screen
-    private static GraphicsLCD graphicsLCD;
-    private static int width;
-    private static int anchor;
-    
-    private static EV3UltrasonicSensor ultrasonicSensor;
-    private static SampleProvider sampleProvider;
-    private static EV3ColorSensor colorSensor;
-    private static ColorAdapter colorAdapter;
-    private static EV3LargeRegulatedMotor leftMotor, rightMotor, rotatorMotor,grabMotor;
-    private static MovePilot pilot;
-   
-    //for mapping and searching
+	private static EV3 ev3;
+	//for drawing on the screen
+	private static GraphicsLCD graphicsLCD;
+	private static int width;
+	private static int anchor;
+
+	//for PC connection
+	private static ServerSocket serverSocket;
+	private static DataOutputStream dataOutputStream;
+	
+	//robot hardware
+	private static EV3UltrasonicSensor ultrasonicSensor;
+	private static SampleProvider sampleProvider;
+	private static EV3ColorSensor colorSensor;
+	private static ColorAdapter colorAdapter;
+	private static EV3LargeRegulatedMotor leftMotor, rightMotor, rotatorMotor,grabMotor;
+	private static MovePilot pilot;
+
+	//for mapping and searching
+	private static final int mapping=-100,idle=-101,execution = -102;
 	private static final int right=0,up=1, left=2, down=3;
 	private static final int wall=1, notWall=2, white=3, blue=4, red=5, black=6;//0 is default value, used for visited cells
 	private static int [][] map11;//used in task execution
 	private static int [][] map19;//used in mapping
 	private static Stack<Point> previous;
-	
+
 	private static int foundCells = 36;//6*6=36 cross section cells of walls and notWalls
 	private static int  ccw = -1;
 	private static boolean isGrabbed = false;
-    
-    
-    public static void main(String[] args) throws Exception {        
-    	initializeRobot(30,"5.5","14.3",0); 
-		drawString("Food Carrying", "Robot", "Please", "push button");
-		Button.waitForAnyPress();
+
+
+	public static void main(String[] args) throws Exception {        
+		initializeRobot(30,"5.5","14.3",0); 
+		drawString("Food Carrying", "Robot", "Connecting to", "PC");
+		establishConnection(1234);
+		drawString("Food Carrying", "Robot", "Connected!", ":)");
+
 		while (Button.readButtons() != Button.ID_ESCAPE) {
 			drawString(
 					"Press",
-					"UP    for Mapping   ",
-					"DOWN  for Execution ", 
-					"ENTER for Idle      ", 
-					"ESC   for Reset     ");
+					"UP    -> Mapping  ",
+					"DOWN  -> Execution", 
+					"ENTER -> Idle     ", 
+					"ESC   -> Reset    ");
 			Button.waitForAnyPress();
 			switch (Button.readButtons()) {
 			case Button.ID_UP:
@@ -73,89 +85,96 @@ public class WhereAmI {
 				execution();
 				break;
 			case Button.ID_ENTER:
-					pilot.rotate(ccw*360);
-					ccw=-ccw;
 				break;
-			case Button.ID_LEFT:
-				pilot.travel(ccw*-150);
-				ccw=-ccw;
-				break;
-			case Button.ID_RIGHT:
-				while(Button.readButtons() != Button.ID_ESCAPE){	
-					drawString("color is " + getCurrentCellColor());
-				}
-//				while(Button.readButtons() != Button.ID_ESCAPE){
-//					getUltrasonicSensorValue();
-//				}
+			default: 
 				break;
 			}
 		}
-    }
-
-	private static void initializeRobot(int speed,String diameter, String tWidth, double errorRate) throws Exception {
-    	ev3 = (EV3) BrickFinder.getDefault();
-    	graphicsLCD = ev3.getGraphicsLCD();
-    	width = graphicsLCD.getWidth()/2;
-    	anchor = GraphicsLCD.HCENTER;
-    	
-    	PilotProps pilotProps = new PilotProps();
-        pilotProps.setProperty(PilotProps.KEY_WHEELDIAMETER, diameter);
-        pilotProps.setProperty(PilotProps.KEY_TRACKWIDTH, tWidth);
-        pilotProps.setProperty(PilotProps.KEY_LEFTMOTOR, "A");
-        pilotProps.setProperty(PilotProps.KEY_RIGHTMOTOR, "D");
-        pilotProps.setProperty(PilotProps.KEY_REVERSE, "false");
-        pilotProps.storePersistentValues();
-        pilotProps.loadPersistentValues();
-        
-        leftMotor = new EV3LargeRegulatedMotor(MotorPort.A);
-        rightMotor = new EV3LargeRegulatedMotor(MotorPort.D);
-     //   rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
-        grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
-    
-        ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
-        sampleProvider = ultrasonicSensor.getDistanceMode();
-
-        colorSensor = new EV3ColorSensor(SensorPort.S2);
-        colorAdapter = new ColorAdapter(colorSensor);
-       
-        leftMotor.resetTachoCount();
-        rightMotor.resetTachoCount();
-     //   rotatorMotor.resetTachoCount();
-        grabMotor.resetTachoCount();
-        
-        float wheelDiameter = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_WHEELDIAMETER, diameter)),
-                trackWidth = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_TRACKWIDTH, tWidth));
-        boolean reverse = Boolean.parseBoolean(pilotProps.getProperty(PilotProps.KEY_REVERSE, "false"));
-        
-        Chassis chassis = new WheeledChassis(new Wheel[]{WheeledChassis.modelWheel(leftMotor,wheelDiameter-errorRate).offset(-trackWidth/2).invert(reverse),
-        		WheeledChassis.modelWheel(rightMotor,wheelDiameter+errorRate).offset(trackWidth/2).invert(reverse)}, WheeledChassis.TYPE_DIFFERENTIAL);
-        
-        pilot = new MovePilot(chassis);
-        pilot.setAngularAcceleration(4*5*speed);
-        pilot.setLinearAcceleration(4*speed);
-        pilot.setLinearSpeed(speed);
-        pilot.setAngularSpeed(5*speed);
-        pilot.stop();		
+		closeConnection();
 	}
 
-    private static void mapping() {
-    	drawString("Mapping ", "is started");
-    	grab(true);
-    	map19 = new int[19][19];
-    	for(int i = 0; i < 19; i+=2){
-    		for(int j = 0; j < 19; j+=2){
+	private static void closeConnection() throws Exception {
+		dataOutputStream.close();
+		serverSocket.close();	
+	}
+
+	private static void establishConnection(int port) throws Exception {
+		serverSocket = new ServerSocket(port);
+		Socket client = serverSocket.accept();
+		OutputStream outputStream = client.getOutputStream();
+		dataOutputStream = new DataOutputStream(outputStream);
+	}
+
+	private static void initializeRobot(int speed,String diameter, String tWidth, double errorRate) throws Exception {
+		ev3 = (EV3) BrickFinder.getDefault();
+		graphicsLCD = ev3.getGraphicsLCD();
+		width = graphicsLCD.getWidth()/2;
+		anchor = GraphicsLCD.HCENTER;
+
+		PilotProps pilotProps = new PilotProps();
+		pilotProps.setProperty(PilotProps.KEY_WHEELDIAMETER, diameter);
+		pilotProps.setProperty(PilotProps.KEY_TRACKWIDTH, tWidth);
+		pilotProps.setProperty(PilotProps.KEY_LEFTMOTOR, "A");
+		pilotProps.setProperty(PilotProps.KEY_RIGHTMOTOR, "D");
+		pilotProps.setProperty(PilotProps.KEY_REVERSE, "false");
+		pilotProps.storePersistentValues();
+		pilotProps.loadPersistentValues();
+
+		leftMotor = new EV3LargeRegulatedMotor(MotorPort.A);
+		rightMotor = new EV3LargeRegulatedMotor(MotorPort.D);
+		//   rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
+		grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
+
+		ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
+		sampleProvider = ultrasonicSensor.getDistanceMode();
+
+		colorSensor = new EV3ColorSensor(SensorPort.S2);
+		colorAdapter = new ColorAdapter(colorSensor);
+
+		leftMotor.resetTachoCount();
+		rightMotor.resetTachoCount();
+		//   rotatorMotor.resetTachoCount();
+		grabMotor.resetTachoCount();
+
+		float wheelDiameter = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_WHEELDIAMETER, diameter)),
+				trackWidth = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_TRACKWIDTH, tWidth));
+		boolean reverse = Boolean.parseBoolean(pilotProps.getProperty(PilotProps.KEY_REVERSE, "false"));
+
+		Chassis chassis = new WheeledChassis(new Wheel[]{WheeledChassis.modelWheel(leftMotor,wheelDiameter-errorRate).offset(-trackWidth/2).invert(reverse),
+				WheeledChassis.modelWheel(rightMotor,wheelDiameter+errorRate).offset(trackWidth/2).invert(reverse)}, WheeledChassis.TYPE_DIFFERENTIAL);
+
+		pilot = new MovePilot(chassis);
+		pilot.setAngularAcceleration(4*5*speed);
+		pilot.setLinearAcceleration(4*speed);
+		pilot.setLinearSpeed(speed);
+		pilot.setAngularSpeed(5*speed);
+		pilot.stop();		
+	}
+
+	private static void mapping() {
+		drawString("Mapping ", "is started");
+		grab(true);
+		map19 = new int[19][19];
+		for(int i = 0; i < 19; i+=2){
+			for(int j = 0; j < 19; j+=2){
 				map19[i][j] = wall;	//cross section of walls or notWalls are always considered as wall 
-    		}						//otherwise it would cause issues on finding nearest path 
-    	}							//i.e. best path found passes through walls 
-    
-    	previous = new Stack<Point>();
-    	int center = 9;
-    	int [] boundaries = {center, center, center, center};//set initial boundaries(right, up,left,down)
+			}						//otherwise it would cause issues on finding nearest path 
+		}							//i.e. best path found passes through walls 
+		previous = new Stack<Point>();
+		int center = 9;
+		int [] boundaries = {center, center, center, center};//set initial boundaries(right, up,left,down)
 		Point position = new Point(center, center),backward;//set initial position of the robot
 		int direction = right,newDirection;//set initial direction of the robot
 		int [] distances = new int[4];//distances from the right, up, left, down walls
-		for (int iteraiton = 0; iteraiton < 2*25*25; iteraiton++) {
+		int currentCellColor = white;
+		for (int iteration = 0; iteration < 2*25*25; iteration++) {
+
+			currentCellColor = getCurrentCellColor();
+			updateMap19(position.x,position.y,currentCellColor);
 			distances = getDistancesfromWalls(direction);
+			sendCurrentState(mapping,position, distances,currentCellColor);
+
+
 			//put values of walls and "not walls" to the 19*19 grid. and update boundaries
 			//TODO update them if sensor is not capable of measuring long distances
 			for (int i = 1; i < distances[0]; i+=2) {
@@ -181,7 +200,7 @@ public class WhereAmI {
 
 				}
 			}
-			
+
 			for (int i = 1; i < distances[2]; i+=2) {
 				int j = position.x - i;
 				if (i==distances[2]) {
@@ -204,33 +223,32 @@ public class WhereAmI {
 					updateMap19(position.x,j,notWall);
 				}
 			}
-			
+
 			//if boundaries are changed and new boundaries produce 11*11 cell grid 
 			//then we found exact place of the 11*11 grid in 19*19 grid. 
 			//then fill 1's to the boundaries and midpoints of this 11*11 grid.
 			if(boundaries[0]-boundaries[2]==10&&boundaries[3]-boundaries[1]==10){
 				for(int i = boundaries[2]+1; i < boundaries[0]; i+=2){
-	        		updateMap19(i, boundaries[1], wall);
-	        		updateMap19(i, boundaries[3], wall);
-		    	}
+					updateMap19(i, boundaries[1], wall);
+					updateMap19(i, boundaries[3], wall);
+				}
 				for(int i = boundaries[1]+1; i < boundaries[3]; i+=2){
-	        		updateMap19(boundaries[0], i, wall);
-	        		updateMap19(boundaries[2], i, wall);
-		    	}
+					updateMap19(boundaries[0], i, wall);
+					updateMap19(boundaries[2], i, wall);
+				}
 			}
-			
-			updateMap19(position.x,position.y,getCurrentCellColor());
-			
+
 			if (foundCells==121) {//mapping is complete
 				saveMap(boundaries);
 				congratulate();
+				sendCurrentState(idle,position, distances,currentCellColor);
 				break;
 			}
-			
+
 			//movement part
-			if (getCurrentCellColor()==black) {//if current cell is black, go back
-		    	pilot.travel(-33);
-		    	position = previous.pop();
+			if (currentCellColor==black) {//if current cell is black, go back
+				pilot.travel(-33);
+				position = previous.pop();
 			}else if(distances[direction]>1&&getAdjacentCell(position,direction)==0){//go straight if possible and not visited
 				position = forward(position,direction);
 			}else if(distances[(direction+1)%4]>1&&getAdjacentCell(position,(direction+1)%4)==0){//go to left cell if possible and not visited
@@ -242,32 +260,58 @@ public class WhereAmI {
 				pilot.rotate(-90);
 				position = forward(position,direction);
 			}else{ //go back
-				if (previous.size()==0) {//TODO trivial solution for the case where there are some reachable cells,should be improved vastly.
+				if (previous.size()==0) {
 					saveMap(boundaries);
 					congratulate();
+					sendCurrentState(idle,position, distances,currentCellColor);
 					break;
 				}
 				backward = previous.pop();
-		    	newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
-		    	pilot.rotate(90*(newDirection-direction));
-		    	direction = newDirection;
-		    	pilot.travel(33);
-		    	position = backward;
+				newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
+				pilot.rotate(90*(newDirection-direction));
+				direction = newDirection;
+				pilot.travel(33);
+				position = backward;
 			}
-			
-			if(checkIdleButton()) break;	
+			if(checkIdleButton()) {
+				sendCurrentState(idle,position, distances,currentCellColor);
+				break;	
+			}
 		}
+		sendCurrentState(idle,position, distances,currentCellColor);
 		grab(false);
 	}
-	
-    private static void execution() {
-		// TODO execution task
-    	loadMap();
-    	//lookaround and current cell color
+
+	/**
+	 * sends current mode, position, distances to walls and current cell color to connected PC
+	 * @param mode
+	 * @param position
+	 * @param distances
+	 * @param currentCellColor
+	 */
+	private static void sendCurrentState(int mode,Point position, int[] distances, int currentCellColor) {
+		try {
+			dataOutputStream.writeInt(mode);
+			dataOutputStream.writeInt(position.x);
+			dataOutputStream.writeInt(position.y);
+			dataOutputStream.writeInt(currentCellColor);
+			for(int i:distances){
+				dataOutputStream.writeInt(i);
+			}	
+			dataOutputStream.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
-    private static void congratulate() {
-		// TODO congragulate better
+	private static void execution() {
+		// TODO execution task
+		loadMap();
+		//lookaround and current cell color
+	}
+
+	private static void congratulate() {
+		// TODO congratulate better
 		try {
 			Sound.playTone(440, 100, 10);
 			Thread.sleep(100);
@@ -278,13 +322,13 @@ public class WhereAmI {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		
+
 	}
-    
-    /**
-     * saves 19*19 map to 11*11 map with the help of boundaries(right, up,left,down)
-     * @param boundaries
-     */
+
+	/**
+	 * saves 19*19 map to 11*11 map with the help of boundaries(right, up,left,down)
+	 * @param boundaries
+	 */
 	private static void saveMap(int[] boundaries) {
 		try {
 			PrintWriter pw = new PrintWriter("map.txt");
@@ -299,30 +343,30 @@ public class WhereAmI {
 			e.printStackTrace();
 		}
 	}
-	
+
 	/**
 	 * loads 11*11 map to map11 array
 	 */
 	private static void loadMap() {
-	    	Scanner scanner;
-			try {
-				scanner = new Scanner(new File("map.txt"));
-				for(int i= 0;i<11;i++){
-					for(int j= 0;j<11;j++){
-						if(scanner.hasNextInt()){
-					    	   map11[i][j]= scanner.nextInt();
-					    }
+		Scanner scanner;
+		try {
+			scanner = new Scanner(new File("map.txt"));
+			for(int i= 0;i<11;i++){
+				for(int j= 0;j<11;j++){
+					if(scanner.hasNextInt()){
+						map11[i][j]= scanner.nextInt();
 					}
 				}
-			} catch (FileNotFoundException e) {
-				e.printStackTrace();
-			}    	
-		}
+			}
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}    	
+	}
 
-    /**
-     * grabs the food by rotating down the grab mechanism grab == true
-     * @param grab
-     */
+	/**
+	 * grabs the food by rotating down the grab mechanism grab == true
+	 * @param grab
+	 */
 	private static void grab(boolean grab) {
 		if (grab==isGrabbed) return;	
 		int dir = grab?-1:1;
@@ -330,14 +374,14 @@ public class WhereAmI {
 		isGrabbed = grab;
 	}
 	/**
-     * goes 1 cell forward and increment and return position with given direction 
-     * pushes current position to stack for backtracking
-     * @param position
-     * @param direction
-     * @return
-     */
+	 * goes 1 cell forward and increment and return position with given direction 
+	 * pushes current position to stack for backtracking
+	 * @param position
+	 * @param direction
+	 * @return
+	 */
 	private static Point forward(Point position, int direction) {
-    	pilot.travel(33);
+		pilot.travel(33);
 		previous.push(new Point(position));
 		if 		(direction==right)	position.x = position.x+2;
 		else if (direction==up)		position.y = position.y-2;
@@ -347,12 +391,12 @@ public class WhereAmI {
 	}
 
 	/**
-     * returns value of cell adjacent to given position in given direction
-     * @param position
-     * @param direction
-     * @return
-     */
-    private static int getAdjacentCell(Point position, int direction) {
+	 * returns value of cell adjacent to given position in given direction
+	 * @param position
+	 * @param direction
+	 * @return
+	 */
+	private static int getAdjacentCell(Point position, int direction) {
 		if 		(direction==right&&position.x+2<19) return map19[position.x+2][position.y];
 		else if (direction==up&&position.y-2>0)		return map19[position.x][position.y-2];
 		else if (direction==left&&position.x-2>0) 	return map19[position.x-2][position.y];
@@ -361,16 +405,16 @@ public class WhereAmI {
 	}
 
 	/**
-     * used for reset to idle state
-     * @return
-     */
-    private static boolean checkIdleButton() {
-    	return (Button.readButtons() == Button.ID_ENTER);		
+	 * used for reset to idle state
+	 * @return
+	 */
+	private static boolean checkIdleButton() {
+		return (Button.readButtons() == Button.ID_ENTER);		
 	}
 
 	private static void updateMap19(int i, int j, int cell) {
 		if (map19[i][j]==0) foundCells++;//first assignment
-    	map19[i][j] = cell;
+		map19[i][j] = cell;
 	}
 
 	/**
@@ -390,9 +434,9 @@ public class WhereAmI {
 	static int []distances = new int[4];
 	static int dir;
 	/**
-     * eg {1,1,1,9}
-     * @return distances of first walls from  right, up, left, down
-   */
+	 * eg {1,1,1,9}
+	 * @return distances of first walls from  right, up, left, down
+	 */
 	private static int[] getDistancesfromWalls(int robotDirection) {
 		for(int i = 0;i<4;i++){
 			int angle = (int)rotatorMotor.getPosition();
@@ -406,25 +450,25 @@ public class WhereAmI {
 		return distances;
 	}
 
-    static float [] samples = new float[1];
+	static float [] samples = new float[1];
 	/** 
 	 * @return sensed distance in meters
 	 */
-    private static float getUltrasonicSensorValue() {
-        if(sampleProvider.sampleSize() > 0) {
-            sampleProvider.fetchSample(samples, 0);
-            return samples[0];
-        }
-        return -1;        
-    }
-    
+	private static float getUltrasonicSensorValue() {
+		if(sampleProvider.sampleSize() > 0) {
+			sampleProvider.fetchSample(samples, 0);
+			return samples[0];
+		}
+		return -1;        
+	}
+
 	/**
-     * prints the screen of {@link EV3} with given msg strings
-     */
-    public static void drawString(String ... msg){
-        graphicsLCD.clear();
-        for (int i = 0; i < msg.length; i++) {
-            graphicsLCD.drawString(msg[i], width, 10 + (i) * 20 , anchor );            
-        }
-    }
+	 * prints the screen of {@link EV3} with given msg strings
+	 */
+	public static void drawString(String ... msg){
+		graphicsLCD.clear();
+		for (int i = 0; i < msg.length; i++) {
+			graphicsLCD.drawString(msg[i], width, 10 + (i) * 20 , anchor );            
+		}
+	}
 }
