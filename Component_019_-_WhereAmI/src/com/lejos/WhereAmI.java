@@ -51,7 +51,7 @@ public class WhereAmI {
 	private static MovePilot pilot;
 
 	//for mapping and searching
-	private static final int mapping=-100,idle=-101,execution = -102;
+	private static final int mapping=-100,idle=-101,execution = -102,mappingSuccess=-103,mappingBacktrace = -104;
 	private static final int right=0,up=1, left=2, down=3;
 	private static final int wall=1, notWall=2, white=3, blue=4, red=5, black=6;//0 is default value, used for visited cells
 	private static int [][] map11;//used in task execution
@@ -64,7 +64,7 @@ public class WhereAmI {
 
 
 	public static void main(String[] args) throws Exception {        
-		initializeRobot(30,"5.5","14.3",0); 
+		initializeRobot(20,"5.5","14.3",0); 
 		drawString("Food Carrying", "Robot", "Connecting to", "PC");
 		establishConnection(1234);
 		drawString("Food Carrying", "Robot", "Connected!", ":)");
@@ -85,12 +85,19 @@ public class WhereAmI {
 				execution();
 				break;
 			case Button.ID_ENTER:
+				pilot.rotate(3600);
+				break;
+			case Button.ID_LEFT:
+				pilot.rotate(-360);
+				break;
+			case Button.ID_RIGHT:
+				pilot.rotate(360);
 				break;
 			default: 
 				break;
 			}
 		}
-		closeConnection();
+			closeConnection();
 	}
 
 	private static void closeConnection() throws Exception {
@@ -122,7 +129,7 @@ public class WhereAmI {
 
 		leftMotor = new EV3LargeRegulatedMotor(MotorPort.A);
 		rightMotor = new EV3LargeRegulatedMotor(MotorPort.D);
-		//   rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
+	    rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
 		grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
 
 		ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
@@ -133,7 +140,7 @@ public class WhereAmI {
 
 		leftMotor.resetTachoCount();
 		rightMotor.resetTachoCount();
-		//   rotatorMotor.resetTachoCount();
+		rotatorMotor.resetTachoCount();
 		grabMotor.resetTachoCount();
 
 		float wheelDiameter = Float.parseFloat(pilotProps.getProperty(PilotProps.KEY_WHEELDIAMETER, diameter)),
@@ -167,108 +174,108 @@ public class WhereAmI {
 		int direction = right,newDirection;//set initial direction of the robot
 		int [] distances = new int[4];//distances from the right, up, left, down walls
 		int currentCellColor = white;
+		boolean isBacktracing=false;
 		for (int iteration = 0; iteration < 2*25*25; iteration++) {
 
-			currentCellColor = getCurrentCellColor();
+			currentCellColor = white;//TODO	getCurrentCellColor();
 			updateMap19(position.x,position.y,currentCellColor);
-			distances = getDistancesfromWalls(direction);
-			sendCurrentState(mapping,position, distances,currentCellColor);
-
-
-			//put values of walls and "not walls" to the 19*19 grid. and update boundaries
-			//TODO update them if sensor is not capable of measuring long distances
-			for (int i = 1; i < distances[0]; i+=2) {
-				int j = position.x + i;
-				if (i==distances[0]) {
-					if (j > boundaries[0]) {
-						boundaries[0]= j;
-					}
+			if(!isBacktracing){
+				distances = getDistancesfromWalls(direction);//TODO put wait
+	
+				//put values of walls and "not walls" to the 19*19 grid. and update boundaries
+				int j = position.x + 1;
+				if (j > boundaries[0]) boundaries[0]= j;
+				if (distances[0]<=1) {//right
 					updateMap19(j, position.y, wall);
 				}else {
 					updateMap19(j, position.y, notWall);
 				}
-			}
-			for (int i = 1; i < distances[1]; i+=2) {
-				int j = position.y - i;
-				if (i==distances[1]) {
-					if (j < boundaries[1]) {
-						boundaries[1]= j;
-					}
+	
+				j = position.y - 1;//up
+				if (j < boundaries[1]) boundaries[1]= j;
+				if (distances[1]<=1) {	
 					updateMap19(position.x,j,wall);
 				}else {
 					updateMap19(position.x,j,notWall);
-
+	
 				}
-			}
-
-			for (int i = 1; i < distances[2]; i+=2) {
-				int j = position.x - i;
-				if (i==distances[2]) {
-					if (j < boundaries[2]) {
-						boundaries[2]= j;
-					}
+	
+	
+				j = position.x - 1;//left
+				if (j < boundaries[2]) boundaries[2]= j;
+				if (distances[2]<=1) {	
 					updateMap19(j,position.y,wall);
 				}else {
 					updateMap19(j, position.y, notWall);
 				}
-			}
-			for (int i = 1; i < distances[3]; i+=2) {
-				int j = position.y + i;
-				if (i==distances[3]) {
-					if (j > boundaries[3]) {
-						boundaries[3]= j;
-					}
+	
+				j = position.y + 1;//down
+				if (j > boundaries[3]) boundaries[3]= j;
+				if (distances[3]<=1) {
 					updateMap19(position.x,j,wall);
 				}else {
 					updateMap19(position.x,j,notWall);
 				}
-			}
-
-			//if boundaries are changed and new boundaries produce 11*11 cell grid 
-			//then we found exact place of the 11*11 grid in 19*19 grid. 
-			//then fill 1's to the boundaries and midpoints of this 11*11 grid.
-			if(boundaries[0]-boundaries[2]==10&&boundaries[3]-boundaries[1]==10){
-				for(int i = boundaries[2]+1; i < boundaries[0]; i+=2){
-					updateMap19(i, boundaries[1], wall);
-					updateMap19(i, boundaries[3], wall);
+				
+				//if boundaries are changed and new boundaries produce 11*11 cell grid 
+				//then we found exact place of the 11*11 grid in 19*19 grid. 
+				//then fill 1's to the boundaries and midpoints of this 11*11 grid.
+				if(boundaries[0]-boundaries[2]==10&&boundaries[3]-boundaries[1]==10){
+					for(int i = boundaries[2]+1; i < boundaries[0]; i+=2){
+						updateMap19(i, boundaries[1], wall);
+						updateMap19(i, boundaries[3], wall);
+					}
+					for(int i = boundaries[1]+1; i < boundaries[3]; i+=2){
+						updateMap19(boundaries[0], i, wall);
+						updateMap19(boundaries[2], i, wall);
+					}
 				}
-				for(int i = boundaries[1]+1; i < boundaries[3]; i+=2){
-					updateMap19(boundaries[0], i, wall);
-					updateMap19(boundaries[2], i, wall);
-				}
-			}
 
-			if (foundCells==121) {//mapping is complete
-				saveMap(boundaries);
-				congratulate();
-				sendCurrentState(idle,position, distances,currentCellColor);
-				break;
+				if (foundCells==121) {//mapping is complete
+					saveMap(boundaries);
+					congratulate();
+					sendCurrentState(mappingSuccess,position, distances,currentCellColor);
+					break;
+				}
+				sendCurrentState(mapping,position, distances,currentCellColor);
+			}else{
+				sendCurrentState(mappingBacktrace,position, distances,currentCellColor);
 			}
+			
+
+			
+
 
 			//movement part
 			if (currentCellColor==black) {//if current cell is black, go back
+				isBacktracing = false;
 				pilot.travel(-33);
-				position = previous.pop();
-			}else if(distances[direction]>1&&getAdjacentCell(position,direction)==0){//go straight if possible and not visited
+				if (previous.size()==0) {
+				}else position = previous.pop();
+			}else if(getAdjacentCell(position,direction)==0){//go straight if possible and not visited
+				isBacktracing = false;
 				position = forward(position,direction);
-			}else if(distances[(direction+1)%4]>1&&getAdjacentCell(position,(direction+1)%4)==0){//go to left cell if possible and not visited
+			}else if(getAdjacentCell(position,(direction+1)%4)==0){//go to left cell if possible and not visited
+				isBacktracing = false;
 				direction = (direction+1)%4;
-				pilot.rotate(90);
-				position = forward(position,direction);
-			}else if(distances[(direction-1)%4]>1&&getAdjacentCell(position,(direction-1)%4)==0){//go to right cell if possible and not visited
-				direction = (direction-1)%4;
 				pilot.rotate(-90);
 				position = forward(position,direction);
+			}else if(getAdjacentCell(position,(direction+3)%4)==0){//go to right cell if possible and not visited
+				isBacktracing = false;
+				direction = (direction+3)%4;
+				pilot.rotate(90);
+				position = forward(position,direction);
 			}else{ //go back
+				isBacktracing = true;
 				if (previous.size()==0) {
 					saveMap(boundaries);
 					congratulate();
-					sendCurrentState(idle,position, distances,currentCellColor);
+					sendCurrentState(mappingSuccess,position, distances,currentCellColor);
 					break;
 				}
 				backward = previous.pop();
 				newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
-				pilot.rotate(90*(newDirection-direction));
+				pilot.rotate(-90*(newDirection-direction));
 				direction = newDirection;
 				pilot.travel(33);
 				position = backward;
@@ -278,7 +285,9 @@ public class WhereAmI {
 				break;	
 			}
 		}
-		sendCurrentState(idle,position, distances,currentCellColor);
+		saveMap(boundaries);
+		congratulate();
+		sendCurrentState(mappingSuccess,position, distances,currentCellColor);
 		grab(false);
 	}
 
@@ -332,9 +341,9 @@ public class WhereAmI {
 	private static void saveMap(int[] boundaries) {
 		try {
 			PrintWriter pw = new PrintWriter("map.txt");
-			for(int i= boundaries[2];i<=boundaries[0];i++){
-				for(int j= boundaries[1];j<=boundaries[3];j++){
-					pw.write(map19[boundaries[2]+i][boundaries[1]+j]+" ");
+			for(int j= boundaries[1];j<=boundaries[3];j++){
+				for(int i= boundaries[2];i<=boundaries[0];i++){
+					pw.write(map19[i][j]+" ");
 				}
 				pw.write("\n");
 			}
@@ -351,8 +360,8 @@ public class WhereAmI {
 		Scanner scanner;
 		try {
 			scanner = new Scanner(new File("map.txt"));
-			for(int i= 0;i<11;i++){
-				for(int j= 0;j<11;j++){
+			for(int j= 0;j<11;j++){
+				for(int i= 0;i<11;i++){
 					if(scanner.hasNextInt()){
 						map11[i][j]= scanner.nextInt();
 					}
@@ -368,9 +377,10 @@ public class WhereAmI {
 	 * @param grab
 	 */
 	private static void grab(boolean grab) {
+		if(true) return;//TODO	revert
 		if (grab==isGrabbed) return;	
 		int dir = grab?-1:1;
-		grabMotor.rotate(dir*430);
+		grabMotor.rotate(dir*400);
 		isGrabbed = grab;
 	}
 	/**
@@ -391,16 +401,16 @@ public class WhereAmI {
 	}
 
 	/**
-	 * returns value of cell adjacent to given position in given direction
+	 * returns value of cell adjacent to given position in given direction if there is no wall in between
 	 * @param position
 	 * @param direction
 	 * @return
 	 */
 	private static int getAdjacentCell(Point position, int direction) {
-		if 		(direction==right&&position.x+2<19) return map19[position.x+2][position.y];
-		else if (direction==up&&position.y-2>0)		return map19[position.x][position.y-2];
-		else if (direction==left&&position.x-2>0) 	return map19[position.x-2][position.y];
-		else if (direction==down&&position.y+2<19) 	return map19[position.x][position.y+2];
+		if 		(direction==right&&position.x+2<19&& map19[position.x+1][position.y]==notWall) return map19[position.x+2][position.y];
+		else if (direction==up&&position.y-2>0&&map19[position.x][position.y-1]==notWall)		return map19[position.x][position.y-2];
+		else if (direction==left&&position.x-2>0&&map19[position.x-1][position.y]==notWall) 	return map19[position.x-2][position.y];
+		else if (direction==down&&position.y+2<19&&map19[position.x][position.y+1]==notWall) 	return map19[position.x][position.y+2];
 		else return -1;
 	}
 
@@ -413,6 +423,7 @@ public class WhereAmI {
 	}
 
 	private static void updateMap19(int i, int j, int cell) {
+		if(i<0||j<0||i>18||j>18) return;
 		if (map19[i][j]==0) foundCells++;//first assignment
 		map19[i][j] = cell;
 	}
@@ -438,13 +449,14 @@ public class WhereAmI {
 	 * @return distances of first walls from  right, up, left, down
 	 */
 	private static int[] getDistancesfromWalls(int robotDirection) {
-		for(int i = 0;i<4;i++){
+		rotatorMotor.rotate( ccw * 360,true);
+		while(rotatorMotor.isMoving()){
 			int angle = (int)rotatorMotor.getPosition();
 			if(angle%90==0){
 				dir = (-angle/90 + robotDirection)%4;
+				if(dir<0)dir+=4;
 				distances[dir] = 1+2*(int)(getUltrasonicSensorValue()/0.33);
 			}
-			rotatorMotor.rotate( ccw * 90);
 		}
 		ccw=-ccw;
 		return distances;
@@ -459,7 +471,7 @@ public class WhereAmI {
 			sampleProvider.fetchSample(samples, 0);
 			return samples[0];
 		}
-		return -1;        
+		return 0;        
 	}
 
 	/**
