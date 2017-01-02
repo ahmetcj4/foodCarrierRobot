@@ -41,8 +41,8 @@ public class WhereAmIPC extends JFrame {
 		map19 = new int[19][19];
 		map11 = new int[11][11];
 		position = new Point(9,9);
-//		loadMap();
-//		mode =execution;
+		loadMap();
+		mode =execution;
 		setSize( size, size );
 		setVisible( true );
 	}
@@ -193,10 +193,10 @@ public class WhereAmIPC extends JFrame {
 
 	public void paint( Graphics g ) {
 		super.paint( g );
-		if (mode==mapping) {
-			displayCells(map19, g );
-		}else{
+		if (mode==execution) {
 			displayCells(map11, g );
+		}else{
+			displayCells(map19, g );
 		}
 		displayPose(position, g );        
 	}
@@ -219,8 +219,11 @@ public class WhereAmIPC extends JFrame {
 				case wall:
 					g2.setPaint( Color.black );
 					break;
-				default:
+				case white:
 					g2.setPaint( Color.white );
+					break;
+				default:
+					g2.setPaint( Color.lightGray );
 					break;
 				}
 				if ( i%2==1 && j%2==1 ) {

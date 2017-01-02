@@ -21,6 +21,7 @@ import lejos.hardware.motor.EV3LargeRegulatedMotor;
 import lejos.hardware.port.MotorPort;
 import lejos.hardware.port.SensorPort;
 import lejos.hardware.sensor.EV3ColorSensor;
+import lejos.hardware.sensor.EV3GyroSensor;
 import lejos.hardware.sensor.EV3UltrasonicSensor;
 import lejos.robotics.Color;
 import lejos.robotics.ColorAdapter;
@@ -29,6 +30,7 @@ import lejos.robotics.chassis.Chassis;
 import lejos.robotics.chassis.Wheel;
 import lejos.robotics.chassis.WheeledChassis;
 import lejos.robotics.navigation.MovePilot;
+import lejos.utility.Delay;
 import lejos.utility.PilotProps;
 
 public class WhereAmI {
@@ -43,9 +45,13 @@ public class WhereAmI {
 	private static DataOutputStream dataOutputStream;
 	
 	//robot hardware
+	private static SampleProvider ultrasonicSampleProvider;
+	private static SampleProvider gyroSampleProvider;
+	
 	private static EV3UltrasonicSensor ultrasonicSensor;
-	private static SampleProvider sampleProvider;
 	private static EV3ColorSensor colorSensor;
+	private static EV3GyroSensor gyroSensor;
+	
 	private static ColorAdapter colorAdapter;
 	private static EV3LargeRegulatedMotor leftMotor, rightMotor, rotatorMotor,grabMotor;
 	private static MovePilot pilot;
@@ -64,7 +70,7 @@ public class WhereAmI {
 
 
 	public static void main(String[] args) throws Exception {        
-		initializeRobot(20,"5.5","14.3",0); 
+		initializeRobot(20,"5.5","14",0); 
 		drawString("Food Carrying", "Robot", "Connecting to", "PC");
 		establishConnection(1234);
 		drawString("Food Carrying", "Robot", "Connected!", ":)");
@@ -85,13 +91,12 @@ public class WhereAmI {
 				execution();
 				break;
 			case Button.ID_ENTER:
-				pilot.rotate(3600);
+				rotatorMotor.rotate(360);
 				break;
 			case Button.ID_LEFT:
-				pilot.rotate(-360);
+				rotatorMotor.rotate(-360);
 				break;
 			case Button.ID_RIGHT:
-				pilot.rotate(360);
 				break;
 			default: 
 				break;
@@ -132,11 +137,15 @@ public class WhereAmI {
 	    rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
 		grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
 
-		ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S1);
-		sampleProvider = ultrasonicSensor.getDistanceMode();
+		ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S4);
+		ultrasonicSampleProvider = ultrasonicSensor.getDistanceMode();
 
 		colorSensor = new EV3ColorSensor(SensorPort.S2);
 		colorAdapter = new ColorAdapter(colorSensor);
+
+		gyroSensor = new EV3GyroSensor(SensorPort.S3);
+	    gyroSampleProvider = gyroSensor.getAngleMode();
+	    gyroSensor.reset();
 
 		leftMotor.resetTachoCount();
 		rightMotor.resetTachoCount();
@@ -156,11 +165,13 @@ public class WhereAmI {
 		pilot.setLinearSpeed(speed);
 		pilot.setAngularSpeed(5*speed);
 		pilot.stop();		
+		rotatorMotor.setSpeed(8*speed);
 	}
 
 	private static void mapping() {
 		drawString("Mapping ", "is started");
-		grab(true);
+		if(!isGrabbed)grab(true);
+		gyroSensor.reset();
 		map19 = new int[19][19];
 		for(int i = 0; i < 19; i+=2){
 			for(int j = 0; j < 19; j+=2){
@@ -177,7 +188,7 @@ public class WhereAmI {
 		boolean isBacktracing=false;
 		for (int iteration = 0; iteration < 2*25*25; iteration++) {
 
-			currentCellColor = white;//TODO	getCurrentCellColor();
+			currentCellColor = 	getCurrentCellColor();
 			updateMap19(position.x,position.y,currentCellColor);
 			if(!isBacktracing){
 				distances = getDistancesfromWalls(direction);//TODO put wait
@@ -242,10 +253,6 @@ public class WhereAmI {
 				sendCurrentState(mappingBacktrace,position, distances,currentCellColor);
 			}
 			
-
-			
-
-
 			//movement part
 			if (currentCellColor==black) {//if current cell is black, go back
 				isBacktracing = false;
@@ -259,11 +266,19 @@ public class WhereAmI {
 				isBacktracing = false;
 				direction = (direction+1)%4;
 				pilot.rotate(-90);
+				gyroFix();
+				position = forward(position,direction);
+			}else if(getAdjacentCell(position,(direction+2)%4)==0){//go to back cell if possible and not visited
+				isBacktracing = false;
+				direction = (direction+2)%4;
+				pilot.rotate(180);
+				gyroFix();
 				position = forward(position,direction);
 			}else if(getAdjacentCell(position,(direction+3)%4)==0){//go to right cell if possible and not visited
 				isBacktracing = false;
 				direction = (direction+3)%4;
 				pilot.rotate(90);
+				gyroFix();
 				position = forward(position,direction);
 			}else{ //go back
 				isBacktracing = true;
@@ -276,10 +291,12 @@ public class WhereAmI {
 				backward = previous.pop();
 				newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
 				pilot.rotate(-90*(newDirection-direction));
+				gyroFix();
 				direction = newDirection;
 				pilot.travel(33);
 				position = backward;
 			}
+			gyroFix();
 			if(checkIdleButton()) {
 				sendCurrentState(idle,position, distances,currentCellColor);
 				break;	
@@ -377,7 +394,6 @@ public class WhereAmI {
 	 * @param grab
 	 */
 	private static void grab(boolean grab) {
-		if(true) return;//TODO	revert
 		if (grab==isGrabbed) return;	
 		int dir = grab?-1:1;
 		grabMotor.rotate(dir*400);
@@ -461,14 +477,28 @@ public class WhereAmI {
 		ccw=-ccw;
 		return distances;
 	}
-
+	
+	private static float angle;
+	private static void gyroFix(){
+    	gyroSampleProvider.fetchSample(samples, 0);
+    	angle = samples[0]%90;
+		 if (angle!=0) {
+			 if(angle>45){
+					pilot.rotate(angle-90);				 
+			 }else if(angle<-45){
+					pilot.rotate(angle+90);				 
+			 }else{
+				 pilot.rotate(angle);
+			 }
+	   	}
+	}
 	static float [] samples = new float[1];
 	/** 
 	 * @return sensed distance in meters
 	 */
 	private static float getUltrasonicSensorValue() {
-		if(sampleProvider.sampleSize() > 0) {
-			sampleProvider.fetchSample(samples, 0);
+		if(ultrasonicSampleProvider.sampleSize() > 0) {
+			ultrasonicSampleProvider.fetchSample(samples, 0);
 			return samples[0];
 		}
 		return 0;        
