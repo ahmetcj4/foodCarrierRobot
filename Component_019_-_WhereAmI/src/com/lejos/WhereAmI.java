@@ -43,15 +43,15 @@ public class WhereAmI {
 	//for PC connection
 	private static ServerSocket serverSocket;
 	private static DataOutputStream dataOutputStream;
-	
+
 	//robot hardware
 	private static SampleProvider ultrasonicSampleProvider;
 	private static SampleProvider gyroSampleProvider;
-	
+
 	private static EV3UltrasonicSensor ultrasonicSensor;
 	private static EV3ColorSensor colorSensor;
 	private static EV3GyroSensor gyroSensor;
-	
+
 	private static ColorAdapter colorAdapter;
 	private static EV3LargeRegulatedMotor leftMotor, rightMotor, rotatorMotor,grabMotor;
 	private static MovePilot pilot;
@@ -91,10 +91,8 @@ public class WhereAmI {
 				execution();
 				break;
 			case Button.ID_ENTER:
-				rotatorMotor.rotate(360);
 				break;
 			case Button.ID_LEFT:
-				rotatorMotor.rotate(-360);
 				break;
 			case Button.ID_RIGHT:
 				break;
@@ -102,7 +100,7 @@ public class WhereAmI {
 				break;
 			}
 		}
-			closeConnection();
+		closeConnection();
 	}
 
 	private static void closeConnection() throws Exception {
@@ -134,7 +132,7 @@ public class WhereAmI {
 
 		leftMotor = new EV3LargeRegulatedMotor(MotorPort.A);
 		rightMotor = new EV3LargeRegulatedMotor(MotorPort.D);
-	    rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
+		rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
 		grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
 
 		ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S4);
@@ -144,8 +142,8 @@ public class WhereAmI {
 		colorAdapter = new ColorAdapter(colorSensor);
 
 		gyroSensor = new EV3GyroSensor(SensorPort.S3);
-	    gyroSampleProvider = gyroSensor.getAngleMode();
-	    gyroSensor.reset();
+		gyroSampleProvider = gyroSensor.getAngleMode();
+		gyroSensor.reset();
 
 		leftMotor.resetTachoCount();
 		rightMotor.resetTachoCount();
@@ -170,7 +168,7 @@ public class WhereAmI {
 
 	private static void mapping() {
 		drawString("Mapping ", "is started");
-		if(!isGrabbed)grab(true);
+		grab(true);
 		gyroSensor.reset();
 		map19 = new int[19][19];
 		for(int i = 0; i < 19; i+=2){
@@ -192,7 +190,7 @@ public class WhereAmI {
 			updateMap19(position.x,position.y,currentCellColor);
 			if(!isBacktracing){
 				distances = getDistancesfromWalls(direction);//TODO put wait
-	
+
 				//put values of walls and "not walls" to the 19*19 grid. and update boundaries
 				int j = position.x + 1;
 				if (j > boundaries[0]) boundaries[0]= j;
@@ -201,17 +199,17 @@ public class WhereAmI {
 				}else {
 					updateMap19(j, position.y, notWall);
 				}
-	
+
 				j = position.y - 1;//up
 				if (j < boundaries[1]) boundaries[1]= j;
 				if (distances[1]<=1) {	
 					updateMap19(position.x,j,wall);
 				}else {
 					updateMap19(position.x,j,notWall);
-	
+
 				}
-	
-	
+
+
 				j = position.x - 1;//left
 				if (j < boundaries[2]) boundaries[2]= j;
 				if (distances[2]<=1) {	
@@ -219,7 +217,7 @@ public class WhereAmI {
 				}else {
 					updateMap19(j, position.y, notWall);
 				}
-	
+
 				j = position.y + 1;//down
 				if (j > boundaries[3]) boundaries[3]= j;
 				if (distances[3]<=1) {
@@ -227,7 +225,7 @@ public class WhereAmI {
 				}else {
 					updateMap19(position.x,j,notWall);
 				}
-				
+
 				//if boundaries are changed and new boundaries produce 11*11 cell grid 
 				//then we found exact place of the 11*11 grid in 19*19 grid. 
 				//then fill 1's to the boundaries and midpoints of this 11*11 grid.
@@ -252,29 +250,29 @@ public class WhereAmI {
 			}else{
 				sendCurrentState(mappingBacktrace,position, distances,currentCellColor);
 			}
-			
+
 			//movement part
 			if (currentCellColor==black) {//if current cell is black, go back
 				isBacktracing = false;
 				pilot.travel(-33);
 				if (previous.size()==0) {
 				}else position = previous.pop();
-			}else if(getAdjacentCell(position,direction)==0){//go straight if possible and not visited
+			}else if(getAdjacentCell19(position,direction)==0){//go straight if possible and not visited
 				isBacktracing = false;
 				position = forward(position,direction);
-			}else if(getAdjacentCell(position,(direction+1)%4)==0){//go to left cell if possible and not visited
+			}else if(getAdjacentCell19(position,(direction+1)%4)==0){//go to left cell if possible and not visited
 				isBacktracing = false;
 				direction = (direction+1)%4;
 				pilot.rotate(-90);
 				gyroFix();
 				position = forward(position,direction);
-			}else if(getAdjacentCell(position,(direction+2)%4)==0){//go to back cell if possible and not visited
+			}else if(getAdjacentCell19(position,(direction+2)%4)==0){//go to back cell if possible and not visited
 				isBacktracing = false;
 				direction = (direction+2)%4;
 				pilot.rotate(180);
 				gyroFix();
 				position = forward(position,direction);
-			}else if(getAdjacentCell(position,(direction+3)%4)==0){//go to right cell if possible and not visited
+			}else if(getAdjacentCell19(position,(direction+3)%4)==0){//go to right cell if possible and not visited
 				isBacktracing = false;
 				direction = (direction+3)%4;
 				pilot.rotate(90);
@@ -331,9 +329,132 @@ public class WhereAmI {
 	}
 
 	private static void execution() {
-		// TODO execution task
 		loadMap();
-		//lookaround and current cell color
+		drawString("Execution", "is started");
+		gyroSensor.reset();
+		previous = new Stack<Point>();
+		Stack<PointVector> candidates = new Stack<>();
+		int direction=right,newDirection;//set initial direction of the robot
+		int [] distances = new int[4];//distances from the right, up, left, down walls
+		Point position = new Point(),backward;
+		int currentCellColor = white;
+		boolean isBacktracing=false;
+		boolean isLocalized = false;
+
+		for (int iteration = 0; iteration < 2*25*25; iteration++) {
+			grab(true);
+			currentCellColor = 	getCurrentCellColor();
+			grab(false);
+			distances = getDistancesfromWalls(direction);
+			for(int i=0;i<distances.length;i++){
+				distances[i]=(distances[i]==1)?wall:notWall;
+			}
+
+			//movement part
+			if (currentCellColor==black) {//if current cell is black, go back
+				isBacktracing = false;
+				pilot.travel(-33);
+				if (previous.size()==0) {
+				}else position = previous.pop();
+			}else if(distances[direction]==notWall){//go straight if possible and not visited
+				isBacktracing = false;
+				position = forward(position,direction);
+			}else if(distances[(direction+1)%4]==notWall){//go to left cell if possible and not visited
+				isBacktracing = false;
+				direction = (direction+1)%4;
+				pilot.rotate(-90);
+				gyroFix();
+				position = forward(position,direction);
+			}else if(distances[(direction+2)%4]==notWall){//go to back cell if possible and not visited
+				isBacktracing = false;
+				direction = (direction+2)%4;
+				pilot.rotate(180);
+				gyroFix();
+				position = forward(position,direction);
+			}else if(distances[(direction+3)%4]==0){//go to right cell if possible and not visited
+				isBacktracing = false;
+				direction = (direction+3)%4;
+				pilot.rotate(90);
+				gyroFix();
+				position = forward(position,direction);
+			}else{ //go back
+				isBacktracing = true;
+				if (previous.size()==0) {
+					congratulate();
+					break;
+				}
+				backward = previous.pop();
+				newDirection =(backward.x==position.x)?((backward.y>position.y)?down:up):((backward.x>position.x)?right:left);
+				pilot.rotate(-90*(newDirection-direction));
+				gyroFix();
+				direction = newDirection;
+				pilot.travel(33);
+				position = backward;
+			}
+			gyroFix();
+			System.out.println(iteration+": expected: ("+position.x+", "+position.y+")->"+dir+" ("+distances[0]+", "+distances[1]+", "+distances[2]+", "+distances[3]+") ");
+
+			if (!isLocalized) {
+				Sound.playTone(440, 100, 10);
+				if(candidates.isEmpty()){//in first iteration, add all possible points
+					for(int j= 1;j<11;j+=2){
+						for(int i= 1;i<11;i+=2){
+							for(int dir=0;dir<4;dir++){
+								if (map11[i][j]==currentCellColor&&
+										map11[i-1][j]==distances[dir]&&
+										map11[i][j-1]==distances[(dir+1)%4]&&
+										map11[i+1][j]==distances[(dir+2)%4]&&
+										map11[i][j+1]==distances[(dir+3)%4]) {
+									candidates.add(new PointVector(i, j, dir));
+								System.out.println(iteration+": candidate: ("+i+", "+j+")->"+dir+" ("+distances[0]+", "+distances[1]+", "+distances[2]+", "+distances[3]+")");
+								}	
+
+							}
+						}
+					}
+				}else{//in other iterations, remove impossible points TODO update
+					for(int i=0;i<candidates.size();i++){
+						PointVector p = candidates.get(i);
+						if 		(p.r==right)	p.x = p.x+2;
+						else if (p.r==up)		p.y = p.y-2;
+						else if (p.r==left) 	p.x = p.x-2;
+						else if (p.r==down) 	p.y = p.y+2;
+						if (p.x<0||p.x>10||p.y<0||p.y>10||
+								!(map11[p.x][p.y]==currentCellColor&&
+								map11[p.x-1][p.y]==distances[p.r]&&
+								map11[p.x][p.y-1]==distances[(p.r+1)%4]&&
+								map11[p.x+1][p.y]==distances[(p.r+2)%4]&&
+								map11[p.x][p.y+1]==distances[(p.r+3)%4])) {
+							candidates.remove(i--);
+							System.out.println(iteration+": candidate removed: ("+p.x+", "+p.y+")->"+p.r);
+						}
+					}
+					if (candidates.size()==1) {
+						isLocalized=true;
+						PointVector pointVector =candidates.pop();
+						position.x = pointVector.x;
+						position.y = pointVector.y;
+						direction = pointVector.r;
+						for(Point p:previous){
+							p.x+=position.x;
+							p.y+=position.y;
+						}
+						System.out.println(iteration+": candidate removed: ("+pointVector.x+", "+pointVector.y+")->"+pointVector.r);
+						sendCurrentState(execution,position, distances,currentCellColor);
+						congratulate();
+						break;
+					}
+				}
+
+			}else{
+				sendCurrentState(execution,position, distances,currentCellColor);
+			}
+			if(checkIdleButton()) {
+				sendCurrentState(idle,position, distances,currentCellColor);
+				break;	
+			}
+		}
+//		sendCurrentState(mappingSuccess,position, distances,currentCellColor);
 	}
 
 	private static void congratulate() {
@@ -374,6 +495,7 @@ public class WhereAmI {
 	 * loads 11*11 map to map11 array
 	 */
 	private static void loadMap() {
+		map11 = new int[11][11];
 		Scanner scanner;
 		try {
 			scanner = new Scanner(new File("map.txt"));
@@ -422,14 +544,27 @@ public class WhereAmI {
 	 * @param direction
 	 * @return
 	 */
-	private static int getAdjacentCell(Point position, int direction) {
+	private static int getAdjacentCell11(Point position, int direction) {
+		if 		(direction==right&&position.x+2<19&& map11[position.x+1][position.y]==notWall) return map11[position.x+2][position.y];
+		else if (direction==up&&position.y-2>0&&map11[position.x][position.y-1]==notWall)		return map11[position.x][position.y-2];
+		else if (direction==left&&position.x-2>0&&map11[position.x-1][position.y]==notWall) 	return map11[position.x-2][position.y];
+		else if (direction==down&&position.y+2<19&&map11[position.x][position.y+1]==notWall) 	return map11[position.x][position.y+2];
+		else return -1;
+	}
+	
+	/**
+	 * returns value of cell adjacent to given position in given direction if there is no wall in between
+	 * @param position
+	 * @param direction
+	 * @return
+	 */
+	private static int getAdjacentCell19(Point position, int direction) {
 		if 		(direction==right&&position.x+2<19&& map19[position.x+1][position.y]==notWall) return map19[position.x+2][position.y];
 		else if (direction==up&&position.y-2>0&&map19[position.x][position.y-1]==notWall)		return map19[position.x][position.y-2];
 		else if (direction==left&&position.x-2>0&&map19[position.x-1][position.y]==notWall) 	return map19[position.x-2][position.y];
 		else if (direction==down&&position.y+2<19&&map19[position.x][position.y+1]==notWall) 	return map19[position.x][position.y+2];
 		else return -1;
 	}
-
 	/**
 	 * used for reset to idle state
 	 * @return
@@ -477,20 +612,20 @@ public class WhereAmI {
 		ccw=-ccw;
 		return distances;
 	}
-	
+
 	private static float angle;
 	private static void gyroFix(){
-    	gyroSampleProvider.fetchSample(samples, 0);
-    	angle = samples[0]%90;
-		 if (angle!=0) {
-			 if(angle>45){
-					pilot.rotate(angle-90);				 
-			 }else if(angle<-45){
-					pilot.rotate(angle+90);				 
-			 }else{
-				 pilot.rotate(angle);
-			 }
-	   	}
+		gyroSampleProvider.fetchSample(samples, 0);
+		angle = samples[0]%90;
+		if (angle!=0) {
+			if(angle>45){
+				pilot.rotate(angle-90);				 
+			}else if(angle<-45){
+				pilot.rotate(angle+90);				 
+			}else{
+				pilot.rotate(angle);
+			}
+		}
 	}
 	static float [] samples = new float[1];
 	/** 
@@ -511,6 +646,17 @@ public class WhereAmI {
 		graphicsLCD.clear();
 		for (int i = 0; i < msg.length; i++) {
 			graphicsLCD.drawString(msg[i], width, 10 + (i) * 20 , anchor );            
+		}
+	}
+
+	static class PointVector{
+		int x;
+		int y;
+		int r;
+		public PointVector(int x, int y, int rotation) {
+			this.x = x;
+			this.y = y;
+			r=rotation;
 		}
 	}
 }

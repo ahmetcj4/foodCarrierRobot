@@ -4,7 +4,6 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.Rectangle;
 import java.awt.geom.Line2D;
 import java.io.DataInputStream;
 import java.io.File;
@@ -12,8 +11,6 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Scanner;
 import java.util.Stack;
 
@@ -41,8 +38,8 @@ public class WhereAmIPC extends JFrame {
 		map19 = new int[19][19];
 		map11 = new int[11][11];
 		position = new Point(9,9);
-		loadMap();
-		mode =execution;
+//		loadMap();
+//		mode =execution;
 		setSize( size, size );
 		setVisible( true );
 	}
@@ -59,12 +56,16 @@ public class WhereAmIPC extends JFrame {
 
 		inputStream = socket.getInputStream();
 		dataInputStream = new DataInputStream(inputStream);
+		Stack<PointVector> candidates = new Stack<>();
 
 		int currentCellColor = white;
 		int [] distances = new int[4];
 		int center = 9;
 		position = new Point(center,center);
 		int [] boundaries = {center, center, center, center};
+		boolean isLocalized=false;
+		int iteration=0;
+
 		while( true ){
 			mode = dataInputStream.readInt();
 			position.x =   dataInputStream.readInt();
@@ -130,6 +131,12 @@ public class WhereAmIPC extends JFrame {
 				break;
 
 			case mappingSuccess:
+				map19 = new int[19][19];
+				for(int x = 0; x < 19; x+=2){
+					for(int y = 0; y < 19; y+=2){
+						map19[x][y] = wall;	//cross section of walls or notWalls are always considered as wall 
+					}						//otherwise it would cause issues on finding nearest path 
+				}							//i.e. best path found passes through walls 
 				saveMap(boundaries);
 				loadMap();
 				position.x -=boundaries[2]; 
@@ -138,6 +145,8 @@ public class WhereAmIPC extends JFrame {
 			case idle:
 				break;
 			case execution:
+				loadMap();
+			
 				break;
 			default:
 				break;
@@ -221,6 +230,9 @@ public class WhereAmIPC extends JFrame {
 					break;
 				case white:
 					g2.setPaint( Color.white );
+					break;	
+				case notWall:
+					g2.setPaint( Color.white );
 					break;
 				default:
 					g2.setPaint( Color.lightGray );
@@ -256,6 +268,17 @@ public class WhereAmIPC extends JFrame {
 		int y=start+(wallSize+cellSize)*(pos.y/2) + wallSize/2 + cellSize/3;
 		g2.drawOval(x, y, cellSize/3, cellSize/3);
 		g2.drawOval(x + cellSize/12, y+ cellSize/12 , cellSize/6, cellSize/6);
+	}
+	
+	static class PointVector{
+		int x;
+		int y;
+		int r;
+		public PointVector(int x, int y, int rotation) {
+			this.x = x;
+			this.y = y;
+			r=rotation;
+		}
 	}
 }
 
