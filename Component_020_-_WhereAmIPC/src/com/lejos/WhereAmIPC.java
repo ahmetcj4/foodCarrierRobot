@@ -20,7 +20,7 @@ public class WhereAmIPC extends JFrame {
 
 	private static final long serialVersionUID = 2280874288993963333L;
 	private static final int wallSize=4,cellSize=100,start = 100;
-	private static final int mapping=-100,idle=-101,execution = -102,mappingSuccess=-103;
+	private static final int mapping=-100,idle=-101,execution = -102,mappingSuccess=-103,mappingBacktrace = -104,mapping2=-105,mappingBacktrace2 = -106;
 	private static int mode = mapping;
 	private static final int right=0,up=1, left=2, down=3;
 	private static final int wall=1, notWall=2, white=3, blue=4, red=5, black=6;//0 is default value, used for visited cells
@@ -128,6 +128,82 @@ public class WhereAmIPC extends JFrame {
 							updateMap19(boundaries[2], i, wall);
 						}
 					}				
+				break;
+			case mapping2:				
+				updateMap19(position.x,position.y,currentCellColor);
+				//put values of walls and "not walls" to the 19*19 grid. and update boundaries
+
+					//put values of walls and "not walls" to the 19*19 grid. and update boundaries
+					j = position.x + 1;
+					if (j > boundaries[0]) boundaries[0]= j;
+					if (distances[0]<=1) {//right
+						updateMap19(j, position.y, wall);
+					}else {
+						updateMap19(j, position.y, notWall);
+					}
+		
+					j = position.y - 1;//up
+					if (j < boundaries[1]) boundaries[1]= j;
+					if (distances[1]<=1) {	
+						updateMap19(position.x,j,wall);
+					}else {
+						updateMap19(position.x,j,notWall);
+		
+					}
+		
+		
+					j = position.x - 1;//left
+					if (j < boundaries[2]) boundaries[2]= j;
+					if (distances[2]<=1) {	
+						updateMap19(j,position.y,wall);
+					}else {
+						updateMap19(j, position.y, notWall);
+					}
+		
+					j = position.y + 1;//down
+					if (j > boundaries[3]) boundaries[3]= j;
+					if (distances[3]<=1) {
+						updateMap19(position.x,j,wall);
+					}else {
+						updateMap19(position.x,j,notWall);
+					}
+					int totalCount=0,count = 0,lastX=0,lastY=0,lastDir=0;
+//					for(int dir=0;dir<4;dir++){
+					for(int y=0;y<11+boundaries[1]-boundaries[3];y++){
+						for(int x=0;x<11+boundaries[2]-boundaries[0];x++){
+							count = 0;
+							for(int b1= boundaries[1];b1<boundaries[3];b1++){
+								for(int b2= boundaries[2];b2<boundaries[0];b2++){
+									if(map11[x+b2-boundaries[2]][y+b1-boundaries[1]]==map19[b2][b1]||map19[b2][b1]==0){
+										count++;
+									}
+								}
+							}//TODO make it general, not for only right
+							if(count ==(boundaries[3]-boundaries[1]+1)*
+									(boundaries[0]-boundaries[2]+1)){
+								totalCount++;
+							//	lastDir = dir;
+								lastX = x;
+								lastY = y;
+
+							}
+							count=0;
+						}
+					}
+				//}
+				if(totalCount==1){//localization == 1
+					//TODO place all map into the cells
+					//TODO generalize it not for only right
+					for(int x=boundaries[2]-lastX;x==boundaries[2]-lastX+11;x++){
+						for(int y=boundaries[1]-lastY;x==boundaries[1]-lastY+11;y++){
+							map19[x][y] = map11[x-(boundaries[2]-lastX)][y-(boundaries[1]-lastY)];
+						}
+					}
+
+					break;
+				}
+						//TODO write method that checks if localization is done
+						//then breaks this for loop		
 				break;
 
 			case mappingSuccess:
