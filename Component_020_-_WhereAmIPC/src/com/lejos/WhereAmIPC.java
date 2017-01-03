@@ -37,9 +37,9 @@ public class WhereAmIPC extends JFrame {
 		int size = 2*start + 9*cellSize + 10*wallSize;
 		map19 = new int[19][19];
 		map11 = new int[11][11];
-		position = new Point(9,9);
+//		position = new Point(9,9);
 //		loadMap();
-//		mode =execution;
+		mode =execution;
 		setSize( size, size );
 		setVisible( true );
 	}

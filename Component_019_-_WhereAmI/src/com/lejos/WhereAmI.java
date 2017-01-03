@@ -72,7 +72,9 @@ public class WhereAmI {
 	public static void main(String[] args) throws Exception {        
 		initializeRobot(20,"5.5","14",0); 
 		drawString("Food Carrying", "Robot", "Connecting to", "PC");
+		Sound.playTone(440, 100, 10);
 		establishConnection(1234);
+		Sound.playTone(440, 100, 10);
 		drawString("Food Carrying", "Robot", "Connected!", ":)");
 
 		while (Button.readButtons() != Button.ID_ESCAPE) {
@@ -132,8 +134,8 @@ public class WhereAmI {
 
 		leftMotor = new EV3LargeRegulatedMotor(MotorPort.A);
 		rightMotor = new EV3LargeRegulatedMotor(MotorPort.D);
-		rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.B);
-		grabMotor = new EV3LargeRegulatedMotor(MotorPort.C);
+		rotatorMotor = new EV3LargeRegulatedMotor(MotorPort.C);
+		grabMotor = new EV3LargeRegulatedMotor(MotorPort.B);
 
 		ultrasonicSensor = new EV3UltrasonicSensor(SensorPort.S4);
 		ultrasonicSampleProvider = ultrasonicSensor.getDistanceMode();
@@ -358,23 +360,27 @@ public class WhereAmI {
 				}else position = previous.pop();
 			}else if(distances[direction]==notWall){//go straight if possible and not visited
 				isBacktracing = false;
+				System.out.println("go: " +distances[0]+", " +distances[1]+", " +distances[2]+", " +distances[3]);
 				position = forward(position,direction);
 			}else if(distances[(direction+1)%4]==notWall){//go to left cell if possible and not visited
 				isBacktracing = false;
-				direction = (direction+1)%4;
+				System.out.println("left: " +distances[0]+", " +distances[1]+", " +distances[2]+", " +distances[3]);
+				direction = (direction+1)%4; 
 				pilot.rotate(-90);
-				gyroFix();
-				position = forward(position,direction);
-			}else if(distances[(direction+2)%4]==notWall){//go to back cell if possible and not visited
-				isBacktracing = false;
-				direction = (direction+2)%4;
-				pilot.rotate(180);
 				gyroFix();
 				position = forward(position,direction);
 			}else if(distances[(direction+3)%4]==0){//go to right cell if possible and not visited
 				isBacktracing = false;
+				System.out.println("right: " +distances[0]+", " +distances[1]+", " +distances[2]+", " +distances[3]);
 				direction = (direction+3)%4;
 				pilot.rotate(90);
+				gyroFix();
+				position = forward(position,direction);
+			}else if(distances[(direction+2)%4]==notWall){//go to back cell if possible and not visited
+				isBacktracing = false;
+				System.out.println("back: " +distances[0]+", " +distances[1]+", " +distances[2]+", " +distances[3]);
+				direction = (direction+2)%4;
+				pilot.rotate(180);
 				gyroFix();
 				position = forward(position,direction);
 			}else{ //go back
@@ -396,6 +402,7 @@ public class WhereAmI {
 
 			if (!isLocalized) {
 				Sound.playTone(440, 100, 10);
+
 				if(candidates.isEmpty()){//in first iteration, add all possible points
 					for(int j= 1;j<11;j+=2){
 						for(int i= 1;i<11;i+=2){
@@ -408,17 +415,39 @@ public class WhereAmI {
 									candidates.add(new PointVector(i, j, dir));
 								System.out.println(iteration+": candidate: ("+i+", "+j+")->"+dir+" ("+distances[0]+", "+distances[1]+", "+distances[2]+", "+distances[3]+")");
 								}	
-
 							}
 						}
 					}
+					System.out.println("# of candidates " + candidates.size());
 				}else{//in other iterations, remove impossible points TODO update
+					Stack<PointVector> newPoints = new Stack<>();
+					for(int j= 1;j<11;j+=2){
+						for(int i= 1;i<11;i+=2){
+							for(int dir=0;dir<4;dir++){
+								if (map11[i][j]==currentCellColor&&
+										map11[i-1][j]==distances[dir]&&
+										map11[i][j-1]==distances[(dir+1)%4]&&
+										map11[i+1][j]==distances[(dir+2)%4]&&
+										map11[i][j+1]==distances[(dir+3)%4]) {
+									System.out.println("sisisis:("+i+", "+j+")->"+dir);
+									for(PointVector p:candidates){
+										if((p.x==i&&(Math.abs(p.y-j)==2))||
+												(p.y==j&&(Math.abs(p.x-i)==2))){
+											newPoints.add(new PointVector(i, j, dir));
+											System.out.println(iteration+": candidate: ("+i+", "+j+")->"+dir+" ("+distances[0]+", "+distances[1]+", "+distances[2]+", "+distances[3]+")");
+											break;
+										}	
+									}
+								}	
+							}
+						}
+					}
+					System.out.println("# of candidates p " + candidates.size());
+					candidates = newPoints;
+					System.out.println("# of candidates a " + candidates.size());
+
 					for(int i=0;i<candidates.size();i++){
 						PointVector p = candidates.get(i);
-						if 		(p.r==right)	p.x = p.x+2;
-						else if (p.r==up)		p.y = p.y-2;
-						else if (p.r==left) 	p.x = p.x-2;
-						else if (p.r==down) 	p.y = p.y+2;
 						if (p.x<0||p.x>10||p.y<0||p.y>10||
 								!(map11[p.x][p.y]==currentCellColor&&
 								map11[p.x-1][p.y]==distances[p.r]&&
@@ -448,6 +477,7 @@ public class WhereAmI {
 
 			}else{
 				sendCurrentState(execution,position, distances,currentCellColor);
+
 			}
 			if(checkIdleButton()) {
 				sendCurrentState(idle,position, distances,currentCellColor);
@@ -455,6 +485,18 @@ public class WhereAmI {
 			}
 		}
 //		sendCurrentState(mappingSuccess,position, distances,currentCellColor);
+	}
+
+	private static int[] changeDirection(int[]duration,int i) {
+		for (int j = 0; j < i; j++) {
+			int k = duration[3];
+			duration[3]=duration[2];
+			duration[2]=duration[1];
+			duration[1]=duration[0];
+			duration[0]=k;
+			
+		}
+		return duration;
 	}
 
 	private static void congratulate() {
